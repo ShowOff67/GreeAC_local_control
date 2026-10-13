@@ -37,14 +37,15 @@ Your AC must already be paired to your Wi-Fi router. You can locate its IP and M
 Run `debug_ac.py` without any configuration. It broadcasts on UDP port 7000 and automatically detects your unit:
 ```bash
 python debug_ac.py
-
+```
 Look for the output line:
 
 [+] Connected to AC: 192.168.1.xx (MAC: xx3x3x9x3bxx)
 
-Method B: Using arp-scan on Linux
+### Method B: Using arp-scan on Linux
+```bash
 sudo arp-scan --localnet
-
+```
 Look for entries under the vendor "GREE ELECTRIC APPLIANCES, INC." or "Espressif Inc.":
 
 ## 2. Installation & Setup
@@ -53,7 +54,7 @@ Look for entries under the vendor "GREE ELECTRIC APPLIANCES, INC." or "Espressif
 ```bash
 git clone [https://github.com/ShowOff67/GreeAC_local_control.git](https://github.com/ShowOff67/GreeAC_local_control.git)
 cd GreeAC_local_control
-
+```
 
 Step 2: Set Up Virtual Environment & Dependencies
 Linux / macOS:
@@ -62,33 +63,36 @@ Linux / macOS:
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-
+```
 Windows (Command Prompt / PowerShell):
 
 ```DOS
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
-
+```
 
 Step 3: Configure Device Details
 Copy the example environment file:
 
 ```bash
 cp .env.example .env
-
-On Windows Command Prompt, use copy .env.example .env
+```
+On Windows Command Prompt, use
+```DOS
+copy .env.example .env
+```
 Open .env and fill in your device's IP and MAC address:
 
 ## 3. Usage & Command Reference
 
-Make sure your virtual environment is active (`source venv/bin/activate` or `venv\Scripts\activate` on Windows).
+Make sure your virtual environment is active (`source venv/bin/activate` on linux or `venv\Scripts\activate` on Windows).
 
 ### Status Query
 Check current status and ambient room temperature without modifying anything:
 ```bash
 python ac.py
-
+```
 
 ----------------------------------------------------------------------------------------------------------------------
 
@@ -100,8 +104,9 @@ python ac.py --power on --mode cool --temp 24 --fan auto
 
 # Turn OFF
 python ac.py --power off
+```
 Temperature & Fan Control
-Bash
+```bash
 # Set specific temperature
 python ac.py --temp 22
 
@@ -110,8 +115,9 @@ python ac.py --fan high
 
 # Enable Turbo Cooling
 python ac.py --turbo on
+```
 Advanced Modes
-Bash
+```bash
 # Enable Energy Saving (SE) mode
 python ac.py --se on
 python ac.py --se off
@@ -128,8 +134,9 @@ python ac.py --quiet on
 # Toggle front panel display LED
 python ac.py --light off
 python ac.py --light on
+```
 Louver Direction & Vertical Swing
-Bash
+```bash
 # Continuous vertical oscillation
 python ac.py --swing full
 
@@ -144,12 +151,13 @@ python ac.py --swing down
 
 # Stop oscillation / return to default position
 python ac.py --swing off
+```
 Silent Execution (No Chime)
 Add --silent to any command to prevent the indoor unit from beeping:
 
-Bash
+```bash
 python ac.py --power on --temp 25 --silent
-
+```
 
 ## 4. Parameter Cheat Sheet
 
@@ -180,22 +188,20 @@ If you need detailed logs or automatic network discovery, use `debug_ac.py`:
 ```bash
 # Auto-scan subnet and inspect live handshake & status
 python debug_ac.py
-
+```
+```
 # Send command with full packet logging
 python debug_ac.py --power on --temp 24
-
-
-
+```
 
 Common Issues
 Command hangs / Device not found:
 
-Ensure your computer and the AC unit are connected to the exact same local Wi-Fi subnet.
+1. Ensure your computer and the AC unit are connected to the exact same local Wi-Fi subnet.
 
-Check your Wi-Fi router settings and ensure "AP Isolation" / "Client Isolation" is disabled, as this setting prevents Wi-Fi clients from communicating locally with each other.
+2. Check your Wi-Fi router settings and ensure "AP Isolation" / "Client Isolation" is disabled, as this setting prevents Wi-Fi clients from communicating locally with each other.
 
-Firewall / Port Blocking:
-
+3. Firewall / Port Blocking:
 Ensure your operating system's firewall permits incoming and outgoing traffic on UDP port 7000.
 
 Multiple ACs on the Same Network:
