@@ -152,12 +152,20 @@ python ac.py --swing down
 # Stop oscillation / return to default position
 python ac.py --swing off
 ```
+# Adjust horizontal left-right swing (if your indoor unit supports 3D louvers)
+```bash
+python ac.py --hswing full
+python ac.py --hswing mid
+```
+
 Silent Execution (No Chime)
 Add --silent to any command to prevent the indoor unit from beeping:
 
 ```bash
 python ac.py --power on --temp 25 --silent
 ```
+
+
 
 ## 4. Parameter Cheat Sheet
 
