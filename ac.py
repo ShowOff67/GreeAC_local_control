@@ -31,12 +31,17 @@ from greeclimate.cipher import CipherV2
 greeclimate.device.CipherV1 = CipherV2
 
 try:
-    from greeclimate.enums import VerticalSwing
+    from greeclimate.enums import VerticalSwing, HorizontalSwing
 except ImportError:
     try:
-        from greeclimate.device import VerticalSwing
+        from greeclimate.device import VerticalSwing, HorizontalSwing
     except ImportError:
         VerticalSwing = None
+        HorizontalSwing = None
+
+class PropWrapper:
+    def __init__(self, v):
+        self.value = v
 
 MODE_MAP = {"auto": Mode.Auto, "cool": Mode.Cool, "dry": Mode.Dry, "fan": Mode.Fan}
 FAN_MAP = {
@@ -52,6 +57,11 @@ SWING_MAP = {
     "full": 1,
     "up": 2, "midup": 3, "mid": 4, "middown": 5, "down": 6
 }
+HSWING_MAP = {
+    "off": 0, "default": 0,
+    "full": 1,
+    "left": 2, "midleft": 3, "mid": 4, "midright": 5, "right": 6
+}
 
 MODE_NAMES = {0: "Auto", 1: "Cool", 2: "Dry", 3: "Fan"}
 FAN_NAMES = {0: "Auto", 1: "Low", 2: "Med-Low", 3: "Medium", 4: "Med-High", 5: "High"}
@@ -59,6 +69,11 @@ SWING_NAMES = {
     0: "Off", 1: "Full Oscillation",
     2: "Ceiling (Top)", 3: "Mid-Up", 4: "Straight (Mid)",
     5: "Mid-Down", 6: "Floor (Down)"
+}
+HSWING_NAMES = {
+    0: "Off", 1: "Full Oscillation",
+    2: "Far Left", 3: "Mid-Left", 4: "Center",
+    5: "Mid-Right", 6: "Far Right"
 }
 
 async def run(args):
@@ -144,12 +159,19 @@ async def run(args):
         if hasattr(ac, "vertical_swing") and VerticalSwing:
             ac.vertical_swing = VerticalSwing(target_swing_val)
         else:
-            class PropWrapper:
-                def __init__(self, v): self.value = v
             ac.set_property(PropWrapper("SwUpDn"), target_swing_val)
         changed = True
 
-    # 13. Silent Execution (Mute remote confirmation chime)
+    # 13. Horizontal Louver Angle / Swing (Left-Right)
+    if args.hswing is not None and args.hswing.lower() in HSWING_MAP:
+        target_hswing_val = HSWING_MAP[args.hswing.lower()]
+        if hasattr(ac, "horizontal_swing") and HorizontalSwing:
+            ac.horizontal_swing = HorizontalSwing(target_hswing_val)
+        else:
+            ac.set_property(PropWrapper("SwingLfRig"), target_hswing_val)
+        changed = True
+
+    # 14. Silent Execution (Mute remote confirmation chime)
     if args.silent:
         orig_encrypt = ac._cipher.encrypt
         def mute_encrypt(data):
@@ -179,17 +201,22 @@ async def run(args):
 
     current_swing_val = getattr(getattr(ac, "vertical_swing", None), "value", props.get("SwUpDn", 0))
     swing_str = SWING_NAMES.get(current_swing_val, str(current_swing_val))
+
+    current_hswing_val = getattr(getattr(ac, "horizontal_swing", None), "value", props.get("SwingLfRig", 0))
+    hswing_str = HSWING_NAMES.get(current_hswing_val, str(current_hswing_val))
+
     filter_dirty = props.get("Dfltr", 0) == 1
     mode_str = MODE_NAMES.get(ac.mode, str(ac.mode))
-    fan_str = "Turbo" if ac.turbo else FAN_NAMES.get(ac.fan_speed, str(ac.fan_speed))
+    fan_str = "Turbo" if ac.turbo else ("Quiet" if ac.quiet else FAN_NAMES.get(ac.fan_speed, str(ac.fan_speed)))
 
     print("┌──────────────────────────────────────────────┐")
     print(f"│ AC Power   : {'[ ON ]' if ac.power else '[ OFF ]':<32}│")
     print(f"│ Target     : {str(ac.target_temperature) + '°C':<32}│")
     print(f"│ Room Temp  : {room_temp:<32}│")
     print(f"│ Mode / Fan : {(mode_str + ' / ' + fan_str):<32}│")
-    print(f"│ Swing Vane : {swing_str:<32}│")
-    print(f"│ SE Energy  : {('ON' if ac.power_save else 'OFF'):<32}│")
+    print(f"│ V-Swing    : {swing_str:<32}│")
+    print(f"│ H-Swing    : {hswing_str:<32}│")
+    print(f"│ SE / Sleep : {('ON' if ac.power_save else 'OFF') + ' / ' + ('ON' if ac.sleep else 'OFF'):<32}│")
     print(f"│ X-Fan / Ion: {('ON' if ac.xfan else 'OFF') + ' / ' + ('ON' if ac.anion else 'OFF'):<32}│")
     print(f"│ Panel LED  : {('ON' if ac.light else 'OFF'):<32}│")
     if filter_dirty:
@@ -211,7 +238,8 @@ if __name__ == "__main__":
     parser.add_argument("--quiet", choices=["on", "off"], help="Ultra-quiet mode")
     parser.add_argument("--light", choices=["on", "off"], help="Front panel display LED")
     parser.add_argument("--sleep", choices=["on", "off"], help="Night sleep mode")
-    parser.add_argument("--swing", choices=["off", "full", "up", "midup", "mid", "middown", "down"], help="Louver position")
+    parser.add_argument("--swing", choices=["off", "full", "up", "midup", "mid", "middown", "down"], help="Vertical louver position")
+    parser.add_argument("--hswing", choices=["off", "full", "left", "midleft", "mid", "midright", "right"], help="Horizontal louver position")
     parser.add_argument("--silent", action="store_true", help="Send command without beeping")
-    
+
     asyncio.run(run(parser.parse_args()))

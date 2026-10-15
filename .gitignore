@@ -15,3 +15,7 @@ __pycache__/
 .vscode/
 .idea/
 *.swp
+
+#folder for native apk
+android_app
+icon.jpg
