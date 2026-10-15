@@ -3,6 +3,7 @@ import sys
 import asyncio
 import argparse
 import logging
+from datetime import datetime
 from pathlib import Path
 
 # Silence background library logging
@@ -86,9 +87,50 @@ async def run(args):
         sys.exit(1)
 
     ac = Device(DeviceInfo(target_ip, 7000, target_mac, "Gree AC"))
-
-    # Direct bind & fast state sync (~45ms)
     await ac.bind()
+
+    # Read hardware clock & remote timer flags alongside standard status
+    orig_encrypt = ac._cipher.encrypt
+    orig_decrypt = ac._cipher.decrypt
+    hw_meta = {"TmrOn": 0, "TmrOff": 0, "time": None}
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def custom_encrypt(data):
+        if isinstance(data, dict):
+            if data.get("t") == "status":
+                cols = data.setdefault("cols", [])
+                for k in ("TmrOn", "TmrOff", "time"):
+                    if k not in cols:
+                        cols.append(k)
+            elif data.get("t") == "cmd":
+                opt = data.setdefault("opt", [])
+                p = data.setdefault("p", [])
+                if args.sync_time and "time" not in opt:
+                    opt.append("time")
+                    p.append(now_str)
+                if args.silent:
+                    if "BuzzerCtrl" in opt:
+                        p[opt.index("BuzzerCtrl")] = 0
+                    else:
+                        opt.append("BuzzerCtrl")
+                        p.append(0)
+        return orig_encrypt(data)
+
+    def custom_decrypt(data):
+        res = orig_decrypt(data)
+        if isinstance(res, dict) and res.get("t") in ("dat", "res"):
+            keys = res.get("cols") or res.get("opt") or []
+            vals = res.get("dat") or res.get("p") or []
+            cur = dict(zip(keys, vals))
+            if "TmrOn" in cur: hw_meta["TmrOn"] = cur["TmrOn"]
+            if "TmrOff" in cur: hw_meta["TmrOff"] = cur["TmrOff"]
+            if "time" in cur: hw_meta["time"] = cur["time"]
+        return res
+
+    ac._cipher.encrypt = custom_encrypt
+    ac._cipher.decrypt = custom_decrypt
+
+    # Fast state sync (~45ms)
     await ac.update_state()
     for _ in range(50):
         if ac.target_temperature is not None:
@@ -171,20 +213,12 @@ async def run(args):
             ac.set_property(PropWrapper("SwingLfRig"), target_hswing_val)
         changed = True
 
-    # 14. Silent Execution (Mute remote confirmation chime)
-    if args.silent:
-        orig_encrypt = ac._cipher.encrypt
-        def mute_encrypt(data):
-            if isinstance(data, dict) and data.get("t") == "cmd":
-                opt = data.setdefault("opt", [])
-                p = data.setdefault("p", [])
-                if "BuzzerCtrl" in opt:
-                    p[opt.index("BuzzerCtrl")] = 0
-                else:
-                    opt.append("BuzzerCtrl")
-                    p.append(0)
-            return orig_encrypt(data)
-        ac._cipher.encrypt = mute_encrypt
+    # 14. Sync Internal Hardware Clock
+    if args.sync_time:
+        # Touch a known property so greeclimate dispatches the cmd packet
+        ac.light = ac.light
+        ac._dirty.append("Lig")
+        changed = True
 
     # Dispatch updates to AC
     if changed:
@@ -209,6 +243,21 @@ async def run(args):
     mode_str = MODE_NAMES.get(ac.mode, str(ac.mode))
     fan_str = "Turbo" if ac.turbo else ("Quiet" if ac.quiet else FAN_NAMES.get(ac.fan_speed, str(ac.fan_speed)))
 
+    ir_timers = []
+    if hw_meta.get("TmrOn"): ir_timers.append("ON-Timer")
+    if hw_meta.get("TmrOff"): ir_timers.append("OFF-Timer")
+    ir_timer_str = ", ".join(ir_timers) if ir_timers else "OFF"
+
+    ac_clock_raw = hw_meta.get("time")
+    if ac_clock_raw:
+        try:
+            dt = datetime.strptime(ac_clock_raw, "%Y-%m-%d %H:%M:%S")
+            clock_str = f"{dt.strftime('%H:%M:%S')} ({dt.strftime('%I:%M %p')})"
+        except ValueError:
+            clock_str = str(ac_clock_raw)[:32]
+    else:
+        clock_str = "N/A"
+
     print("┌──────────────────────────────────────────────┐")
     print(f"│ AC Power   : {'[ ON ]' if ac.power else '[ OFF ]':<32}│")
     print(f"│ Target     : {str(ac.target_temperature) + '°C':<32}│")
@@ -219,6 +268,8 @@ async def run(args):
     print(f"│ SE / Sleep : {('ON' if ac.power_save else 'OFF') + ' / ' + ('ON' if ac.sleep else 'OFF'):<32}│")
     print(f"│ X-Fan / Ion: {('ON' if ac.xfan else 'OFF') + ' / ' + ('ON' if ac.anion else 'OFF'):<32}│")
     print(f"│ Panel LED  : {('ON' if ac.light else 'OFF'):<32}│")
+    print(f"│ IR Timer   : {ir_timer_str:<32}│")
+    print(f"│ AC Clock   : {clock_str:<32}│")
     if filter_dirty:
         print("│ Warning    : [!] AIR FILTER NEEDS CLEANING   │")
     print("└──────────────────────────────────────────────┘")
@@ -240,6 +291,7 @@ if __name__ == "__main__":
     parser.add_argument("--sleep", choices=["on", "off"], help="Night sleep mode")
     parser.add_argument("--swing", choices=["off", "full", "up", "midup", "mid", "middown", "down"], help="Vertical louver position")
     parser.add_argument("--hswing", choices=["off", "full", "left", "midleft", "mid", "midright", "right"], help="Horizontal louver position")
+    parser.add_argument("--sync-time", action="store_true", help="Sync AC internal clock with Linux PC time")
     parser.add_argument("--silent", action="store_true", help="Send command without beeping")
 
     asyncio.run(run(parser.parse_args()))
